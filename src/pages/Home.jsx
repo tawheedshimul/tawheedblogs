@@ -1,124 +1,104 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Link } from "react-router-dom"
+import { FiArrowRight } from "react-icons/fi"
+import PostCard from "../components/PostCard"
 import api from "../utils/api"
-import FeaturedPosts from "../components/posts/FeaturedPosts"
-import PostGrid from "../components/posts/PostGrid"
-import Pagination from "../components/common/Pagination"
-import LoadingSpinner from "../components/common/LoadingSpinner"
-import LatestPostsCarousel from "../components/posts/LatestPostsCarousel"
 
 const Home = () => {
-  const [posts, setPosts] = useState([])
+  const [featuredPosts, setFeaturedPosts] = useState([])
+  const [latestPosts, setLatestPosts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [activeTag, setActiveTag] = useState("")
-  const [tags, setTags] = useState([])
 
   useEffect(() => {
     const fetchPosts = async () => {
       try {
         setLoading(true)
-        const params = { page, limit: 9 }
-        if (activeTag) params.tag = activeTag
+        const [featuredResponse, latestResponse] = await Promise.all([
+          api.get("/posts/featured?limit=3"),
+          api.get("/posts/latest?limit=6"),
+        ])
 
-        const response = await api.get("/api/posts", { params })
-        setPosts(response.data.posts)
-        setTotalPages(response.data.pages)
-
-        // Extract unique tags from all posts for the tag filter
-        if (!activeTag && page === 1) {
-          const allTags = response.data.posts
-            .flatMap((post) => post.tags)
-            .filter((tag, index, self) => tag && self.indexOf(tag) === index)
-          setTags(allTags)
-        }
-      } catch (err) {
-        console.error("Error fetching posts:", err)
-        setError("Failed to load posts. Please try again later.")
+        setFeaturedPosts(featuredResponse.data)
+        setLatestPosts(latestResponse.data)
+      } catch (error) {
+        console.error("Error fetching posts:", error)
       } finally {
         setLoading(false)
       }
     }
 
     fetchPosts()
-  }, [page, activeTag])
+  }, [])
 
-  const handlePageChange = (newPage) => {
-    setPage(newPage)
-    window.scrollTo(0, 0)
-  }
-
-  const handleTagClick = (tag) => {
-    setActiveTag(tag === activeTag ? "" : tag)
-    setPage(1)
-  }
-
-  if (error) {
+  if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-red-500">{error}</div>
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <section className="mb-12">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4">Welcome to Our Blog</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Discover the latest insights, tutorials, and stories from our community.
-          </p>
+    <div className="space-y-12">
+      {/* Hero Section */}
+      <section className="text-center py-12 px-4">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">Welcome to BlogApp</h1>
+        <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto mb-8">
+          Discover stories, thinking, and expertise from writers on any topic.
+        </p>
+        <div className="flex justify-center gap-4">
+          <Link
+            to="/search"
+            className="px-6 py-3 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          >
+            Explore Posts
+          </Link>
+          <Link
+            to="/create-post"
+            className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+          >
+            Start Writing
+          </Link>
         </div>
-
-        {/* Latest Posts Carousel */}
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold mb-6">Latest Articles</h2>
-          <LatestPostsCarousel />
-        </div>
-
-        <FeaturedPosts />
       </section>
 
-      <section>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">All Articles</h2>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => handleTagClick("")}
-              className={`px-3 py-1 rounded-full text-sm ${
-                activeTag === "" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-              }`}
+      {/* Featured Posts */}
+      {featuredPosts.length > 0 && (
+        <section>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Featured Posts</h2>
+            <Link
+              to="/search?featured=true"
+              className="text-primary-600 dark:text-primary-400 flex items-center hover:underline"
             >
-              All
-            </button>
+              View all <FiArrowRight className="ml-1" />
+            </Link>
+          </div>
 
-            {tags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => handleTagClick(tag)}
-                className={`px-3 py-1 rounded-full text-sm ${
-                  activeTag === tag ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-                }`}
-              >
-                {tag}
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {featuredPosts.map((post) => (
+              <PostCard key={post._id} post={post} />
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Latest Posts */}
+      <section>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Latest Posts</h2>
+          <Link to="/search" className="text-primary-600 dark:text-primary-400 flex items-center hover:underline">
+            View all <FiArrowRight className="ml-1" />
+          </Link>
         </div>
 
-        {loading ? (
-          <LoadingSpinner />
-        ) : (
-          <>
-            <PostGrid posts={posts} />
-            <Pagination currentPage={page} totalPages={totalPages} onPageChange={handlePageChange} />
-          </>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {latestPosts.map((post) => (
+            <PostCard key={post._id} post={post} />
+          ))}
+        </div>
       </section>
     </div>
   )

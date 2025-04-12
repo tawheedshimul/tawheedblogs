@@ -1,353 +1,325 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { toast } from "react-toastify"
+import { useState, useEffect, useCallback } from "react"
+import { useParams, Link, useNavigate } from "react-router-dom"
+import { FiEdit, FiMapPin, FiGlobe, FiCalendar, FiMail, FiMessageSquare, FiAlertCircle } from "react-icons/fi"
+import toast from "react-hot-toast"
+import PostCard from "../components/PostCard"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
-import Button from "../components/common/Button"
-import InputField from "../components/forms/InputField"
-import LoadingSpinner from "../components/common/LoadingSpinner"
+import { formatDate } from "../utils/formatDate"
+
+// Mock profile data for development
+const MOCK_PROFILE = {
+  _id: "mock-user-id",
+  username: "demouser",
+  email: "demo@example.com",
+  bio: "This is a demo profile that appears when the real profile can't be loaded.",
+  location: "Internet",
+  website: "https://example.com",
+  createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(), // 30 days ago
+  avatar: null,
+}
+
+// Mock posts for development
+const MOCK_POSTS = [
+  {
+    _id: "mock-post-1",
+    title: "Getting Started with React",
+    content: "This is a sample post about React.",
+    excerpt: "Learn the basics of React and how to create your first component...",
+    author: {
+      _id: "mock-user-id",
+      username: "demouser",
+      avatar: null,
+    },
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
+    likes: [],
+    comments: [],
+    tags: ["react", "javascript", "frontend"],
+  },
+  {
+    _id: "mock-post-2",
+    title: "Advanced CSS Techniques",
+    content: "This is a sample post about CSS.",
+    excerpt: "Discover advanced CSS techniques to make your websites stand out...",
+    author: {
+      _id: "mock-user-id",
+      username: "demouser",
+      avatar: null,
+    },
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), // 5 days ago
+    likes: [],
+    comments: [],
+    tags: ["css", "design", "frontend"],
+  },
+]
 
 const Profile = () => {
-  const { user, updateUserProfile } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [avatarPreview, setAvatarPreview] = useState("")
-  const [formData, setFormData] = useState({
-    username: "",
-    bio: "",
-    location: "",
-    website: "",
-    avatar: null,
-  })
+  const { id } = useParams()
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [profile, setProfile] = useState(null)
+  const [posts, setPosts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [useMockData, setUseMockData] = useState(false)
 
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  })
+  const fetchProfile = useCallback(async () => {
+    // Check if id is valid
+    if (!id || id === "undefined") {
+      console.error("Invalid profile ID:", id)
+      setError("Invalid profile ID. Please check the URL and try again.")
+      setLoading(false)
+      return
+    }
 
-  const [errors, setErrors] = useState({})
-  const [passwordErrors, setPasswordErrors] = useState({})
-  const [activeTab, setActiveTab] = useState("profile")
+    try {
+      setLoading(true)
+      setError(null)
+      setUseMockData(false)
+
+      // Use a specific cache configuration for profile data
+      const response = await api.get(`/users/${id}`, {
+        cache: true, // Enable caching
+        timeout: 5000, // 5 second timeout
+      })
+
+      setProfile(response.data.user)
+      setPosts(response.data.posts)
+    } catch (error) {
+      console.error("Error fetching profile:", error)
+
+      // If we're in development mode or the error is severe, use mock data
+      if (import.meta.env.DEV || error.message.includes("Network Error") || error.response?.status === 404) {
+        console.log("Using mock profile data")
+        setUseMockData(true)
+        setProfile(MOCK_PROFILE)
+        setPosts(MOCK_POSTS)
+      } else {
+        setError(error.response?.data?.error || "Failed to load profile")
+        toast.error("Failed to load profile")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
 
   useEffect(() => {
-    if (user) {
-      setFormData({
-        username: user.username || "",
-        bio: user.bio || "",
-        location: user.location || "",
-        website: user.website || "",
-        avatar: null,
-      })
-      setAvatarPreview(user.avatar || "")
-    }
-  }, [user])
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-    // Clear error when user types
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: "" }))
-    }
-  }
-
-  const handlePasswordChange = (e) => {
-    const { name, value } = e.target
-    setPasswordData((prev) => ({ ...prev, [name]: value }))
-    // Clear error when user types
-    if (passwordErrors[name]) {
-      setPasswordErrors((prev) => ({ ...prev, [name]: "" }))
-    }
-  }
-
-  const handleAvatarChange = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    if (!file.type.startsWith("image/")) {
-      setErrors((prev) => ({ ...prev, avatar: "Please select an image file" }))
-      return
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setErrors((prev) => ({ ...prev, avatar: "Image size should be less than 5MB" }))
-      return
-    }
-
-    setFormData((prev) => ({ ...prev, avatar: file }))
-    setAvatarPreview(URL.createObjectURL(file))
-
-    if (errors.avatar) {
-      setErrors((prev) => ({ ...prev, avatar: "" }))
-    }
-  }
-
-  const validateProfileForm = () => {
-    const newErrors = {}
-
-    if (!formData.username.trim()) {
-      newErrors.username = "Username is required"
-    } else if (formData.username.length < 3) {
-      newErrors.username = "Username must be at least 3 characters"
-    }
-
-    if (formData.website && !/^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(formData.website)) {
-      newErrors.website = "Please enter a valid URL"
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const validatePasswordForm = () => {
-    const newErrors = {}
-
-    if (!passwordData.currentPassword) {
-      newErrors.currentPassword = "Current password is required"
-    }
-
-    if (!passwordData.newPassword) {
-      newErrors.newPassword = "New password is required"
-    } else if (passwordData.newPassword.length < 6) {
-      newErrors.newPassword = "Password must be at least 6 characters"
-    }
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match"
-    }
-
-    setPasswordErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleProfileSubmit = async (e) => {
-    e.preventDefault()
-
-    if (!validateProfileForm()) return
-
+    // Reset state when id changes
+    setProfile(null)
+    setPosts([])
+    setError(null)
     setLoading(true)
 
-    try {
-      // Create FormData object for file upload
-      const profileData = new FormData()
-      profileData.append("username", formData.username)
-      profileData.append("bio", formData.bio)
-      profileData.append("location", formData.location)
-      profileData.append("website", formData.website)
+    // Only fetch if we have a valid ID
+    if (id && id !== "undefined") {
+      fetchProfile()
+    } else {
+      // Use mock data if no valid ID
+      console.log("No valid ID provided, using mock data")
+      setUseMockData(true)
+      setProfile(MOCK_PROFILE)
+      setPosts(MOCK_POSTS)
+      setLoading(false)
+    }
 
-      if (formData.avatar) {
-        profileData.append("avatar", formData.avatar)
+    // Clear cache for this profile when component unmounts
+    return () => {
+      if (id && id !== "undefined") {
+        api.clearCacheFor(`/users/${id}`)
       }
+    }
+  }, [id, fetchProfile])
 
-      const response = await api.patch("/api/users/profile", profileData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      })
-
-      // Update user in context
-      updateUserProfile(response.data.user)
-      toast.success("Profile updated successfully")
-    } catch (error) {
-      const message = error.response?.data?.error || "Failed to update profile"
-      toast.error(message)
-    } finally {
-      setLoading(false)
+  const handleSendMessage = () => {
+    if (profile && user && profile._id !== user.id) {
+      navigate(`/messages/${profile._id}`)
     }
   }
 
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault()
-
-    if (!validatePasswordForm()) return
-
-    setLoading(true)
-
-    try {
-      await api.patch("/api/users/password", {
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
-      })
-
-      // Reset password fields
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      })
-
-      toast.success("Password updated successfully")
-    } catch (error) {
-      const message = error.response?.data?.error || "Failed to update password"
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+  const handleRetry = () => {
+    fetchProfile()
   }
 
-  if (!user) return <LoadingSpinner />
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  if (error && !useMockData) {
+    return (
+      <div className="text-center py-12">
+        <FiAlertCircle className="mx-auto h-12 w-12 text-red-500 mb-4" />
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Error Loading Profile</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
+        <div className="flex justify-center gap-4">
+          <button onClick={handleRetry} className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
+            Try Again
+          </button>
+          <Link
+            to="/"
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            Back to Home
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile && !useMockData) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">User not found</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          The user you're looking for doesn't exist or has been removed.
+        </p>
+        <Link to="/" className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
+          Back to Home
+        </Link>
+      </div>
+    )
+  }
+
+  const isCurrentUser = user && user.id === profile._id
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Profile Settings</h1>
-
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px">
-            <button
-              onClick={() => setActiveTab("profile")}
-              className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                activeTab === "profile"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Profile Information
-            </button>
-            <button
-              onClick={() => setActiveTab("password")}
-              className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                activeTab === "password"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Change Password
-            </button>
-          </nav>
+    <div className="max-w-4xl mx-auto">
+      {useMockData && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4 mb-6 rounded">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <FiAlertCircle className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700 dark:text-yellow-200">
+                Showing demo profile data. The actual profile could not be loaded.
+              </p>
+            </div>
+          </div>
         </div>
+      )}
 
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden mb-8">
         <div className="p-6">
-          {activeTab === "profile" && (
-            <form onSubmit={handleProfileSubmit} className="space-y-6">
-              <div className="flex flex-col md:flex-row gap-6">
-                <div className="md:w-1/3">
-                  <div className="text-center">
-                    <div className="mb-4">
-                      {avatarPreview ? (
-                        <img
-                          src={avatarPreview || "/placeholder.svg"}
-                          alt="Avatar preview"
-                          className="w-32 h-32 rounded-full mx-auto object-cover border-4 border-gray-200"
-                        />
-                      ) : (
-                        <div className="w-32 h-32 rounded-full mx-auto bg-blue-100 flex items-center justify-center">
-                          <span className="text-blue-600 text-4xl font-bold">
-                            {user.username.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="avatar-upload"
-                        className="cursor-pointer bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+            <img
+              src={profile.avatar || `https://ui-avatars.com/api/?name=${profile.username}&background=random&size=200`}
+              alt={profile.username}
+              className="w-32 h-32 rounded-full object-cover"
+              loading="eager"
+              width="128"
+              height="128"
+            />
+
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{profile.username}</h1>
+
+                <div className="flex mt-2 md:mt-0 gap-2 justify-center md:justify-end">
+                  {isCurrentUser ? (
+                    <Link
+                      to="/edit-profile"
+                      className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                    >
+                      <FiEdit className="mr-2" /> Edit Profile
+                    </Link>
+                  ) : (
+                    user && (
+                      <button
+                        onClick={handleSendMessage}
+                        className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
                       >
-                        Change Avatar
-                        <input
-                          id="avatar-upload"
-                          name="avatar"
-                          type="file"
-                          className="sr-only"
-                          accept="image/*"
-                          onChange={handleAvatarChange}
-                        />
-                      </label>
-                      {errors.avatar && <p className="mt-1 text-sm text-red-600">{errors.avatar}</p>}
+                        <FiMessageSquare className="mr-2" /> Message
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2 text-gray-600 dark:text-gray-300">
+                {profile.bio && <p>{profile.bio}</p>}
+
+                <div className="flex flex-wrap gap-4 mt-4">
+                  {profile.location && (
+                    <div className="flex items-center">
+                      <FiMapPin className="mr-2 text-gray-500 dark:text-gray-400" />
+                      <span>{profile.location}</span>
                     </div>
-                  </div>
-                </div>
+                  )}
 
-                <div className="md:w-2/3 space-y-4">
-                  <InputField
-                    label="Username"
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    error={errors.username}
-                    required
-                  />
+                  {profile.website && (
+                    <div className="flex items-center">
+                      <FiGlobe className="mr-2 text-gray-500 dark:text-gray-400" />
+                      <a
+                        href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary-600 dark:text-primary-400 hover:underline"
+                      >
+                        {profile.website.replace(/^https?:\/\//, "")}
+                      </a>
+                    </div>
+                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                    <textarea
-                      name="bio"
-                      value={formData.bio}
-                      onChange={handleChange}
-                      rows={4}
-                      className="block w-full rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border-gray-300"
-                      placeholder="Tell us about yourself"
-                    ></textarea>
+                  <div className="flex items-center">
+                    <FiCalendar className="mr-2 text-gray-500 dark:text-gray-400" />
+                    <span>Joined {formatDate(profile.createdAt)}</span>
                   </div>
 
-                  <InputField
-                    label="Location"
-                    name="location"
-                    value={formData.location}
-                    onChange={handleChange}
-                    placeholder="City, Country"
-                  />
-
-                  <InputField
-                    label="Website"
-                    name="website"
-                    value={formData.website}
-                    onChange={handleChange}
-                    error={errors.website}
-                    placeholder="https://yourwebsite.com"
-                  />
+                  {isCurrentUser && (
+                    <div className="flex items-center">
+                      <FiMail className="mr-2 text-gray-500 dark:text-gray-400" />
+                      <span>{profile.email}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" isLoading={loading} disabled={loading}>
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {activeTab === "password" && (
-            <form onSubmit={handlePasswordSubmit} className="space-y-6 max-w-md mx-auto">
-              <InputField
-                label="Current Password"
-                type="password"
-                name="currentPassword"
-                value={passwordData.currentPassword}
-                onChange={handlePasswordChange}
-                error={passwordErrors.currentPassword}
-                required
-              />
-
-              <InputField
-                label="New Password"
-                type="password"
-                name="newPassword"
-                value={passwordData.newPassword}
-                onChange={handlePasswordChange}
-                error={passwordErrors.newPassword}
-                required
-              />
-
-              <InputField
-                label="Confirm New Password"
-                type="password"
-                name="confirmPassword"
-                value={passwordData.confirmPassword}
-                onChange={handlePasswordChange}
-                error={passwordErrors.confirmPassword}
-                required
-              />
-
-              <div className="flex justify-end">
-                <Button type="submit" isLoading={loading} disabled={loading}>
-                  Update Password
-                </Button>
-              </div>
-            </form>
-          )}
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Posts by {profile.username}</h2>
+
+        {posts.length === 0 ? (
+          <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <p className="text-gray-600 dark:text-gray-400">
+              {isCurrentUser ? "You haven't" : `${profile.username} hasn't`} published any posts yet.
+            </p>
+
+            {isCurrentUser && (
+              <Link
+                to="/create-post"
+                className="inline-block mt-4 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+              >
+                Create Your First Post
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {posts.map((post) => (
+              <PostCard key={post._id} post={post} />
+            ))}
+          </div>
+        )}
+
+        {posts.length > 0 && (
+          <div className="mt-8 text-center">
+            <Link
+              to={`/search?author=${profile._id}`}
+              className="inline-flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              View All Posts by {profile.username}
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   )

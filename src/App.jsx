@@ -1,99 +1,182 @@
 "use client"
 
+import { Suspense, lazy } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
+import { Toaster } from "react-hot-toast"
 import { useAuth } from "./context/AuthContext"
-import Navbar from "./components/layout/Navbar"
-import Footer from "./components/layout/Footer"
+import Layout from "./components/Layout"
+
+// Eagerly load critical components
 import Home from "./pages/Home"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
-import PostDetail from "./pages/PostDetail"
-import CreatePost from "./pages/CreatePost"
-import EditPost from "./pages/EditPost"
-import Dashboard from "./pages/Dashboard"
-import AdminDashboard from "./pages/AdminDashboard"
-import SearchResults from "./pages/SearchResults"
-import Profile from "./pages/Profile"
 import NotFound from "./pages/NotFound"
-import { toast } from "react-toastify"
+
+// Lazy load non-critical components
+const PostDetail = lazy(() => import("./pages/PostDetail"))
+const CreatePost = lazy(() => import("./pages/CreatePost"))
+const EditPost = lazy(() => import("./pages/EditPost"))
+const Profile = lazy(() => import("./pages/Profile"))
+const EditProfile = lazy(() => import("./pages/EditProfile"))
+const Messages = lazy(() => import("./pages/Messages"))
+const Conversation = lazy(() => import("./pages/Conversation"))
+const Search = lazy(() => import("./pages/Search"))
+const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"))
+const AdminUsers = lazy(() => import("./pages/admin/Users"))
+const AdminPosts = lazy(() => import("./pages/admin/Posts"))
+
+// Loading component
+const LoadingFallback = () => (
+  <div className="flex justify-center items-center min-h-screen">
+    <span className="loading loading-spinner loading-lg"></span>
+  </div>
+)
+
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth()
+
+  if (loading) return <LoadingFallback />
+  if (!user) return <Navigate to="/login" />
+
+  return children
+}
+
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth()
+
+  if (loading) return <LoadingFallback />
+  if (!user || user.role !== "admin") return <Navigate to="/" />
+
+  return children
+}
 
 function App() {
-  const { user, isAdmin } = useAuth()
-
-  // Protected route component
-  const ProtectedRoute = ({ children, adminOnly = false }) => {
-    if (!user) return <Navigate to="/login" />
-
-    // Only allow admin access to admin routes
-    if (adminOnly && !isAdmin) {
-      toast.error("You don't have permission to access this page")
-      return <Navigate to="/" />
-    }
-
-    return children
-  }
-
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
-      <main className="flex-grow">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
-          <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
-          <Route path="/posts/:id" element={<PostDetail />} />
-          <Route path="/search" element={<SearchResults />} />
-
-          {/* Protected routes */}
+    <>
+      <Toaster position="top-right" />
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="login" element={<Login />} />
+          <Route path="register" element={<Register />} />
           <Route
-            path="/create-post"
+            path="posts/:id"
             element={
-              <ProtectedRoute>
-                <CreatePost />
-              </ProtectedRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <PostDetail />
+              </Suspense>
             }
           />
           <Route
-            path="/edit-post/:id"
+            path="search"
             element={
-              <ProtectedRoute>
-                <EditPost />
-              </ProtectedRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <Search />
+              </Suspense>
             }
           />
           <Route
-            path="/dashboard"
+            path="profile/:id"
             element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
+              <Suspense fallback={<LoadingFallback />}>
                 <Profile />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              // <ProtectedRoute adminOnly={true}>
-                
-              // </ProtectedRoute>
-              <AdminDashboard />
+              </Suspense>
             }
           />
 
-          {/* 404 route */}
+          <Route
+            path="create-post"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <CreatePost />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="edit-post/:id"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <EditPost />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="edit-profile"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <EditProfile />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="messages"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <Messages />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="messages/:id"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <Conversation />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="admin"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <AdminDashboard />
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="admin/users"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <AdminUsers />
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="admin/posts"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <AdminPosts />
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+
           <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
+        </Route>
+      </Routes>
+    </>
   )
 }
 
-export default App
+export default App;

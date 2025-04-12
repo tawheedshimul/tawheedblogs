@@ -2,119 +2,57 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { toast } from "react-toastify"
-import api from "../utils/api"
-import PostForm from "../components/forms/PostForm"
-import LoadingSpinner from "../components/common/LoadingSpinner"
+import toast from "react-hot-toast"
+import PostEditor from "../components/PostEditor"
 import { useAuth } from "../context/AuthContext"
+import api from "../utils/api"
 
 const EditPost = () => {
   const { id } = useParams()
+  const { user } = useAuth()
   const navigate = useNavigate()
-  const { user, isAdmin } = useAuth()
-
   const [post, setPost] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     const fetchPost = async () => {
       try {
         setLoading(true)
-        const response = await api.get(`/api/posts/${id}`)
+        const response = await api.get(`/posts/${id}`)
         setPost(response.data)
 
-        // Check if user can edit this post
-        if (user && response.data.author._id !== user.id && !isAdmin) {
-          setError("You don't have permission to edit this post")
+        // Check if user is authorized to edit this post
+        if (user && (user.id === response.data.author._id || user.role === "admin")) {
+          // User is authorized
+        } else {
+          toast.error("You are not authorized to edit this post")
+          navigate(`/posts/${id}`)
         }
-      } catch (err) {
-        console.error("Error fetching post:", err)
-        setError("Failed to load post. You may not have permission to edit it.")
+      } catch (error) {
+        console.error("Error fetching post:", error)
+        toast.error("Failed to load post")
+        navigate("/404")
       } finally {
         setLoading(false)
       }
     }
 
     fetchPost()
-  }, [id, user, isAdmin])
+  }, [id, user, navigate])
 
-  const handleSubmit = async (formData) => {
-    try {
-      setIsSubmitting(true)
-
-      // Create FormData object for file upload
-      const postData = new FormData()
-      postData.append("title", formData.title)
-      postData.append("content", formData.content)
-      postData.append("excerpt", formData.excerpt)
-      postData.append("tags", formData.tags)
-      postData.append("featured", formData.featured)
-
-      if (formData.image && formData.image !== post.image) {
-        postData.append("image", formData.image)
-      }
-
-      await api.patch(`/api/posts/${id}`, postData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      })
-
-      toast.success("Post updated successfully!")
-      navigate(`/posts/${id}`)
-    } catch (error) {
-      const message = error.response?.data?.error || "Failed to update post"
-      toast.error(message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  if (loading) return <LoadingSpinner />
-
-  if (error) {
+  if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-md p-6 text-center">
-          <div className="text-red-500 mb-4">{error}</div>
-          <button
-            onClick={() => navigate(-1)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Go Back
-          </button>
-        </div>
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
       </div>
     )
   }
 
-  if (!post) return null
-
-  const initialValues = {
-    title: post.title,
-    content: post.content,
-    excerpt: post.excerpt || "",
-    tags: post.tags.join(", "),
-    featured: post.featured,
-    image: post.image,
-  }
-
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="p-6 md:p-8">
-          <h1 className="text-3xl font-bold mb-6">Edit Post</h1>
+    <div className="max-w-4xl mx-auto">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Edit Post</h1>
 
-          <PostForm
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            initialValues={initialValues}
-            isEditing={true}
-          />
-        </div>
-      </div>
+      {post && <PostEditor initialData={post} isEditing={true} />}
     </div>
   )
 }
